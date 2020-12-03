@@ -1,0 +1,264 @@
+<style>
+* {
+	font-family: monospace;
+	font-size: 12px;
+}
+select {
+	padding: 0 1em;
+	width: 120px;
+	height: 22rem;
+	overflow: auto;
+	display: block;
+	float: left;
+}
+
+select.red {
+	background-color: #faa;
+}
+
+div.left {
+	padding-right: 1em;
+	margin-bottom: 1em;
+	float: left;
+}
+
+div.clear {
+	clear: both;
+}
+
+ul.cool-list {
+	padding-left: 1.5em;
+	margin-bottom: 1em;
+}
+
+li.green {
+	background-color: #afa;
+}
+
+a.times {
+	text-decoration: none;
+}
+
+span.yellow {
+	background-color: #ff3;
+}
+</style>
+<div class="left">
+<select id="all-aspects" multiple></select>
+<select id="my-aspects" multiple></select>
+</div>
+
+<div class="left">
+	<h2>Offerings</h2>
+	<ul class="cool-list" id="list-offers"></ul>
+</div>
+<div class="left">
+	<h2>Spells</h2>
+	<ul class="cool-list" id="list-spells"></ul>
+</div>
+<div class="left">
+	<h2>Rites</h2>
+	<ul class="cool-list" id="list-rites"></ul>
+</div>
+<div class="left">
+	<h2>Alchemy</h2>
+	<ul class="cool-list" id="list-alchemy"></ul>
+</div>
+<div class="clear"></div>
+<div class="left">
+	<h2>Saved presets</h2>
+	<ul id="list-presets" class="cool-list"></ul>
+	<input id="preset-name" type="text"> <a href="#" onclick="savePreset()">save</a>
+</div>
+
+<script src="./religion.js"></script>
+<script>
+const _gid = id => document.getElementById(id);
+const all_aspects = _gid("all-aspects");
+const my_aspects = _gid("my-aspects");
+const offers = _gid("list-offers");
+const spells = _gid("list-spells");
+const rites = _gid("list-rites");
+const alchemy = _gid("list-alchemy");
+const preset_list = _gid("list-presets");
+const preset_name = _gid("preset-name");
+
+for(let V of Object.values(ASPECT).sort()) {
+	all_aspects.appendChild((() => {
+		const O = document.createElement("option");
+		O.value = V;
+		O.appendChild(document.createTextNode(V));
+		return O;
+	})());
+}
+
+refill(offers, OFFERS);
+refill(spells, SPELLS);
+refill(rites, RITES);
+refill(alchemy, ALCHEMY);
+
+all_aspects.addEventListener("dblclick", addSelected);
+my_aspects.addEventListener("dblclick", removeSelected);
+
+all_aspects.addEventListener("keydown", actionOnKey({
+	"Enter"      : addSelected, 
+	"Backspace"  : removeMatching,
+}));
+my_aspects.addEventListener("keydown", actionOnKey({
+	"Enter"      : removeSelected, 
+	"Backspace"  : removeSelected,
+}));
+document.body.addEventListener("keydown", actionOnKey({
+	"ArrowLeft"  : () => all_aspects.focus(),
+	"ArrowRight" : () => my_aspects.focus(),
+}));
+
+if(!localStorage.getItem('presets')) {
+	const presets = {
+		"The Puritans"       : [ASPECT.RESCUE , ASPECT.LIGHT    , ASPECT.MYSTIC     ] ,
+		"The Slaves"         : [ASPECT.DEATH  , ASPECT.OBSCURE  , ASPECT.CHAOS      ] ,
+		"The Technomancers"  : [ASPECT.TECH   , ASPECT.SCIENCE  , ASPECT.RESOURCES  ] ,
+		"The Jesters"        : [ASPECT.WACKY  , ASPECT.CHAOS    , ASPECT.RESOURCES  , ASPECT.HERD],
+	};
+	localStorage.setItem('presets', JSON.stringify(presets));
+}
+
+loadPresets();
+
+function actionOnKey(keys) {
+	return function(event) {
+		if(keys[event.code])
+			keys[event.code]();
+	}
+}
+
+function addSelected() {
+	for(let S of all_aspects.selectedOptions)
+		my_aspects.appendChild((() => {
+			const O = document.createElement("option");
+			O.value = S.value;
+			O.text = S.text;
+			return O;
+		})());
+	update();
+}
+
+function removeSelected() {
+	const index = my_aspects.selectedIndex;
+	for(let S of Array.from(my_aspects.selectedOptions))
+		my_aspects.removeChild(S);
+	if(my_aspects.options.length)
+		my_aspects.value = my_aspects.options[Math.min(index, my_aspects.options.length - 1)].value;
+	update();
+}
+
+function removeMatching() {
+	for(let S of Array.from(my_aspects.options)) {
+		if(Array.from(all_aspects.selectedOptions)
+			.map(o => o.value).includes(S.value))
+			my_aspects.removeChild(S);
+	}
+	update();
+}
+
+function update() {
+	my_aspects.className = my_aspects.options.length == 3 ? "" : "red";
+	refill(offers, OFFERS);
+	refill(spells, SPELLS);
+	refill(rites, RITES);
+	refill(alchemy, ALCHEMY);
+}
+
+function refill(list, ref) {
+	list.textContent = "";
+	let asps = group(Array.from(my_aspects.options).map(o => o.value));
+	let have = lookup(ref, asps);
+	for(let [nam, des, _] of Object.entries(ref)
+		.map(([nam, des]) => [nam, des, have.includes(nam)])
+		.sort((a, b) => b[2] - a[2])) {
+		list.appendChild((() => {
+			let L = document.createElement("li");
+			L.innerHTML = `<strong>${nam}</strong> [${stringify(des, asps)}]`;
+			if(_)
+				L.className = "green";
+			return L;
+		})());
+	}
+}
+
+function loadPresets() {
+	preset_list.textContent = "";
+	let presets = localStorage.getItem('presets');
+	if(!presets)
+		return;
+	presets = JSON.parse(presets);
+	for(let [nam, des] of Object.entries(presets)) {
+		preset_list.appendChild((() => {
+			let L = document.createElement("li");
+			L.innerHTML = `<a href="#" onclick="loadPreset('${nam}')">${nam}</a> [${des.join(', ')}] <a href="#" class="times" onclick="deletePreset('${nam}')">&times;</a>`;
+			return L;
+		})());
+	}
+}
+
+function loadPreset(name) {
+	let presets = localStorage.getItem('presets');
+	if(!presets)
+		return;
+	presets = JSON.parse(presets);
+	if(!presets[name])
+		return loadPresets();
+	preset_name.value = name;
+	my_aspects.textContent = "";
+	presets[name].forEach(V => {
+		my_aspects.appendChild((() => {
+			const O = document.createElement("option");
+			O.value = V;
+			O.appendChild(document.createTextNode(V));
+			return O;
+
+		})());
+	});
+	update();
+}
+
+function savePreset() {
+	let presets = localStorage.getItem('presets') || "{}";
+	presets = JSON.parse(presets);
+	let aspects = Array.from(my_aspects.options).map(o => o.value);
+	if(!aspects.length)
+		return;
+	if(!preset_name.value)
+		preset_name.value = name(aspects);
+	presets[preset_name.value] = aspects;
+	localStorage.setItem('presets', JSON.stringify(presets));
+	loadPresets();
+}
+
+function deletePreset(name) {
+	let presets = localStorage.getItem('presets');
+	if(!presets)
+		return;
+	presets = JSON.parse(presets);
+	if(!presets[name])
+		return loadPresets();
+	delete presets[name];
+	localStorage.setItem('presets', JSON.stringify(presets));
+	loadPresets();
+}
+
+function name(list) {
+	return `The ${Adj[list[0]]} ${Obj[list[1]]} of ${Subj[list[2]]}`;
+}
+
+function stringify(obj, asp) {
+	let list = [];
+	let copy = Object.assign({}, asp);
+	for(key in obj)
+		for(let i = 0; i < obj[key]; i++) {
+			list.push(`<span class="${copy[key] > 0 ? 'yellow' : ''}">${key}</span>`);
+			copy[key]--;
+		}
+	return list.join(', ');
+}
+</script>
